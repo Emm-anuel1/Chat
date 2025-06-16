@@ -2,87 +2,49 @@
 <html>
 <head>
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-
-  <title>Friends List</title>
-  <script src="https://www.gstatic.com/firebasejs/9.6.10/firebase-app-compat.js"></script>
-  <script src="https://www.gstatic.com/firebasejs/9.6.10/firebase-auth-compat.js"></script>
-  <script src="https://www.gstatic.com/firebasejs/9.6.10/firebase-firestore-compat.js"></script>
+  <title>Friends</title>
   <style>
-    body {
-      font-family: sans-serif;
-      padding: 20px;
-      background-color: #f5f5f5;
-    }
-    h2 {
-      color: #333;
-    }
-    .friend {
-      background: white;
-      padding: 15px;
-      margin: 10px 0;
-      border-radius: 8px;
-      box-shadow: 0 1px 3px rgba(0,0,0,0.1);
-      cursor: pointer;
-      transition: background 0.2s ease;
-    }
-    .friend:hover {
-      background: #e7f3ff;
-    }
+    .friend { margin: 10px; padding: 10px; background: #eee; display: flex; gap: 10px; align-items: center; }
+    img { width: 40px; height: 40px; border-radius: 50%; }
+    .online { width: 10px; height: 10px; border-radius: 50%; background: green; }
   </style>
 </head>
 <body>
+  <h2>Friends</h2>
+  <div id="friendList">Loading...</div>
 
-<h2>Your Friends</h2>
-<div id="friendList">Loading...</div>
+  <script type="module">
+    import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/9.6.10/firebase-auth.js";
+    import { getDocs, collection } from "https://www.gstatic.com/firebasejs/9.6.10/firebase-firestore.js";
 
-<script>
-  const firebaseConfig = {
-    apiKey: "AIzaSyBT-zmh4glqmWhmel2T-o6ew-mkhCE7Io8",
-    authDomain: "chatting-85dba.firebaseapp.com",
-    projectId: "chatting-85dba",
-    storageBucket: "chatting-85dba.appspot.com",
-    messagingSenderId: "817026099810",
-    appId: "1:817026099810:web:b6a19229c7365da71dff3b"
-  };
+    const app = firebase.initializeApp({...});
+    const auth = firebase.auth();
+    const db = firebase.firestore();
 
-  firebase.initializeApp(firebaseConfig);
-  const auth = firebase.auth();
-  const db = firebase.firestore();
+    const friendList = document.getElementById("friendList");
 
-  const friendListDiv = document.getElementById("friendList");
-
-  auth.onAuthStateChanged(user => {
-    if (!user) {
-      alert("You need to log in first");
-      window.location.href = "login.html";
-      return;
-    }
-
-    const currentUser = user.email;
-
-    // Load friends (example: everyone else in "users" collection)
-    db.collection("users").get().then(snapshot => {
-      friendListDiv.innerHTML = "";
+    auth.onAuthStateChanged(async user => {
+      if (!user) return location.href = "signup.html";
+      const snapshot = await db.collection("users").get();
+      friendList.innerHTML = "";
       snapshot.forEach(doc => {
         const data = doc.data();
-        if (data.email !== currentUser) {
+        if (data.email !== user.email) {
           const div = document.createElement("div");
           div.className = "friend";
-          div.textContent = data.email;
+          div.innerHTML = `
+            <img src="${data.photoURL}" />
+            <div>${data.email}</div>
+            <div class="online"></div>
+          `;
           div.onclick = () => {
             sessionStorage.setItem("friendEmail", data.email);
-            window.location.href = "chat.html";
+            location.href = "chat.html";
           };
-          friendListDiv.appendChild(div);
+          friendList.appendChild(div);
         }
       });
-
-      if (friendListDiv.innerHTML === "") {
-        friendListDiv.textContent = "No friends yet.";
-      }
     });
-  });
-</script>
-
+  </script>
 </body>
 </html>
