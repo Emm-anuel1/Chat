@@ -1,0 +1,84 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Sign Up</title>
+  <script src="https://www.gstatic.com/firebasejs/9.6.10/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.6.10/firebase-auth-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.6.10/firebase-firestore-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.6.10/firebase-storage-compat.js"></script>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      padding: 20px;
+      background: #f0f0f0;
+    }
+    input, button {
+      display: block;
+      margin: 10px 0;
+      padding: 10px;
+      width: 90%;
+      max-width: 300px;
+    }
+  </style>
+</head>
+<body>
+
+<h2>👤 Create Account</h2>
+
+<input type="email" id="email" placeholder="Email">
+<input type="password" id="password" placeholder="Password">
+<input type="file" id="profilePic" accept="image/*">
+<button onclick="signUp()">Sign Up</button>
+
+<script>
+  const firebaseConfig = {
+    apiKey: "AIzaSyBT-zmh4glqmWhmel2T-o6ew-mkhCE7Io8",
+    authDomain: "chatting-85dba.firebaseapp.com",
+    projectId: "chatting-85dba",
+    storageBucket: "chatting-85dba.appspot.com",
+    messagingSenderId: "817026099810",
+    appId: "1:817026099810:web:b6a19229c7365da71dff3b"
+  };
+
+  firebase.initializeApp(firebaseConfig);
+  const auth = firebase.auth();
+  const db = firebase.firestore();
+  const storage = firebase.storage();
+
+  async function signUp() {
+    const email = document.getElementById("email").value;
+    const password = document.getElementById("password").value;
+    const file = document.getElementById("profilePic").files[0];
+
+    if (!email || !password || !file) {
+      alert("Please fill all fields and upload a picture.");
+      return;
+    }
+
+    try {
+      const userCred = await auth.createUserWithEmailAndPassword(email, password);
+      const uid = userCred.user.uid;
+
+      // Upload the profile picture
+      const storageRef = storage.ref("profile_pictures/" + uid);
+      await storageRef.put(file);
+      const photoURL = await storageRef.getDownloadURL();
+
+      // Save user info to Firestore
+      await db.collection("users").doc(uid).set({
+        email: email,
+        photoURL: photoURL,
+        isOnline: true
+      });
+
+      alert("Sign up successful!");
+      window.location.href = "friend.html";
+
+    } catch (error) {
+      alert("Error: " + error.message);
+    }
+  }
+</script>
+
+</body>
+</html>

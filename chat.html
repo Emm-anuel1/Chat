@@ -1,0 +1,199 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Chat App</title>
+  <script src="https://www.gstatic.com/firebasejs/9.6.10/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.6.10/firebase-auth-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.6.10/firebase-firestore-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.6.10/firebase-storage-compat.js"></script>
+  <style>
+    body { font-family: sans-serif; padding: 20px; background: #f4f4f4; }
+    #messages { max-height: 400px; overflow-y: auto; padding: 10px; background: white; border-radius: 10px; }
+    .message { background: #e0e0e0; margin: 10px 0; padding: 8px 12px; border-radius: 8px; position: relative; }
+    .my-message { background: #d1ffd1; }
+    .message button {
+      float: right;
+      background: transparent;
+      border: none;
+      color: red;
+      cursor: pointer;
+      font-size: 14px;
+    }
+    .chat-input { margin-top: 20px; display: flex; gap: 5px; flex-wrap: wrap; }
+    .chat-input input { flex: 1; padding: 10px; border-radius: 5px; border: 1px solid #ccc; }
+    .chat-input button { padding: 10px 15px; border: none; border-radius: 5px; background: #007bff; color: white; cursor: pointer; }
+    #recordStatus { color: red; font-weight: bold; margin-top: 5px; }
+  </style>
+</head>
+<body>
+
+<h2>Chat with Friend</h2>
+
+<div id="messages"></div>
+
+<div class="chat-input">
+  <input type="text" id="messageInput" placeholder="Type your message...">
+  <button onclick="sendMessage()">Send</button>
+  <button onclick="toggleRecording()">🎙️</button>
+  <button onclick="cancelRecording()">❌ Cancel</button>
+</div>
+<p id="recordStatus"></p>
+
+<script type="module">
+  import { initializeApp } from "https://www.gstatic.com/firebasejs/9.6.10/firebase-app.js";
+  import { getFirestore, collection, addDoc, query, orderBy, onSnapshot, doc, deleteDoc } from "https://www.gstatic.com/firebasejs/9.6.10/firebase-firestore.js";
+  import { getAuth, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/9.6.10/firebase-auth.js";
+  import { getStorage, ref, uploadBytes, getDownloadURL } from "https://www.gstatic.com/firebasejs/9.6.10/firebase-storage.js";
+
+  const firebaseConfig = {
+    apiKey: "AIzaSyBT-zmh4glqmWhmel2T-o6ew-mkhCE7Io8",
+    authDomain: "chatting-85dba.firebaseapp.com",
+    projectId: "chatting-85dba",
+    storageBucket: "chatting-85dba.appspot.com",
+    messagingSenderId: "817026099810",
+    appId: "1:817026099810:web:b6a19229c7365da71dff3b"
+  };
+
+  const app = initializeApp(firebaseConfig);
+  const db = getFirestore(app);
+  const auth = getAuth(app);
+  const storage = getStorage(app);
+
+  let currentUserEmail = "";
+  let friendEmail = sessionStorage.getItem("friendEmail") || "test@example.com"; // temp fallback
+
+  function getChatId(email1, email2) {
+    return [email1, email2].sort().join("_");
+  }
+
+  onAuthStateChanged(auth, user => {
+    if (user) {
+      currentUserEmail = user.email;
+      const chatId = getChatId(currentUserEmail, friendEmail);
+      const messagesRef = collection(db, "private_chats", chatId, "messages");
+      const q = query(messagesRef, orderBy("timestamp"));
+
+      onSnapshot(q, snapshot => {
+        const messagesDiv = document.getElementById("messages");
+        messagesDiv.innerHTML = "";
+        snapshot.forEach(docSnap => {
+          const data = docSnap.data();
+          const div = document.createElement("div");
+          div.className = "message";
+          if (data.sender === currentUserEmail) div.classList.add("my-message");
+
+          if (data.audioURL) {
+            const audio = document.createElement("audio");
+            audio.controls = true;
+            audio.src = data.audioURL;
+            div.appendChild(audio);
+          } else {
+            const text = document.createElement("span");
+            const time = data.timestamp?.toDate().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) || '';
+            text.textContent = `${data.text} — ${time}`;
+            div.appendChild(text);
+          }
+
+          if (data.sender === currentUserEmail) {
+            const delBtn = document.createElement("button");
+            delBtn.textContent = "🗑️";
+            delBtn.onclick = () => {
+              if (confirm("Delete this message?")) {
+                deleteDoc(doc(db, "private_chats", chatId, "messages", docSnap.id));
+              }
+            };
+            div.appendChild(delBtn);
+          }
+
+          messagesDiv.appendChild(div);
+          messagesDiv.scrollTop = messagesDiv.scrollHeight;
+        });
+      });
+    }
+  });
+
+  function sendMessage() {
+    const input = document.getElementById("messageInput");
+    const text = input.value.trim();
+    if (!text) return;
+    const chatId = getChatId(currentUserEmail, friendEmail);
+    addDoc(collection(db, "private_chats", chatId, "messages"), {
+      sender: currentUserEmail,
+      text,
+      timestamp: new Date()
+    });
+    input.value = "";
+  }
+
+  // 🎙️ Voice Note Recording
+  let mediaRecorder;
+  let audioChunks = [];
+  let isRecording = false;
+  let recordStartTime;
+  let recordTimer;
+
+  function toggleRecording() {
+    if (!isRecording) {
+      startRecording();
+    } else {
+      stopRecording();
+    }
+  }
+
+  function startRecording() {
+    navigator.mediaDevices.getUserMedia({ audio: true }).then(stream => {
+      mediaRecorder = new MediaRecorder(stream);
+      mediaRecorder.start();
+      isRecording = true;
+      audioChunks = [];
+
+      recordStartTime = Date.now();
+      recordTimer = setInterval(() => {
+        const seconds = Math.floor((Date.now() - recordStartTime) / 1000);
+        document.getElementById("recordStatus").textContent = `Recording... ${seconds}s`;
+      }, 1000);
+
+      mediaRecorder.ondataavailable = e => audioChunks.push(e.data);
+      mediaRecorder.onstop = () => {
+        clearInterval(recordTimer);
+        document.getElementById("recordStatus").textContent = "";
+        const audioBlob = new Blob(audioChunks, { type: 'audio/webm' });
+        if (audioBlob.size > 0) uploadAudio(audioBlob);
+      };
+    }).catch(() => alert("Microphone permission denied."));
+  }
+
+  function stopRecording() {
+    mediaRecorder?.stop();
+    isRecording = false;
+  }
+
+  function cancelRecording() {
+    if (isRecording) {
+      mediaRecorder?.stop();
+      isRecording = false;
+      audioChunks = [];
+      document.getElementById("recordStatus").textContent = "Recording cancelled.";
+    }
+  }
+
+  function uploadAudio(blob) {
+    if (!blob || blob.size === 0) return;
+    const fileName = `voice_${Date.now()}.webm`;
+    const storageRef = ref(storage, `voice_notes/${fileName}`);
+    uploadBytes(storageRef, blob).then(snapshot => {
+      getDownloadURL(snapshot.ref).then(url => {
+        const chatId = getChatId(currentUserEmail, friendEmail);
+        addDoc(collection(db, "private_chats", chatId, "messages"), {
+          sender: currentUserEmail,
+          text: "[Voice Note]",
+          audioURL: url,
+          timestamp: new Date()
+        });
+      });
+    });
+  }
+</script>
+
+</body>
+</html>
